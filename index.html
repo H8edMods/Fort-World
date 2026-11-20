@@ -1,0 +1,75 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="#1b2a1b"><link rel="manifest" href="manifest.json"><title>Fort World</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:#12200f;color:#fff;font:14px system-ui;overflow:hidden;height:100dvh}
+video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;display:none}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+#hud{position:fixed;top:0;left:0;right:0;padding:8px;background:#000a;z-index:2;font-size:15px}
+#bar{position:fixed;bottom:0;left:0;right:0;display:flex;gap:6px;padding:8px;z-index:2}
+button{flex:1;padding:12px 4px;border:0;border-radius:10px;background:#2e7d32;color:#fff;font-size:15px}
+#p{position:fixed;inset:44px 0 64px;background:#0d1a0df2;overflow:auto;padding:10px;display:none;z-index:3}
+#p button{flex:none;padding:8px 10px;margin:3px}
+#g{display:grid;grid-template-columns:repeat(8,1fr);gap:2px;margin:8px 0}
+#g div{aspect-ratio:1;background:#2a3a22;display:flex;align-items:center;justify-content:center;font-size:22px;border-radius:4px}
+.t{position:fixed;left:50%;top:56px;transform:translateX(-50%);background:#000d;padding:8px 14px;border-radius:20px;z-index:5;text-align:center;max-width:90%}
+#dp{position:fixed;right:10px;bottom:80px;display:none;grid-template-columns:repeat(3,52px);gap:4px;z-index:2}
+#dp button{padding:0;height:52px}
+</style></head><body>
+<video id="v" autoplay playsinline muted></video><canvas id="c"></canvas>
+<div id="hud"></div><div id="p"></div>
+<div id="dp"><span></span><button onclick="mvp(0,6)">▲</button><span></span><button onclick="mvp(-6,0)">◀</button><span></span><button onclick="mvp(6,0)">▶</button><span></span><button onclick="mvp(0,-6)">▼</button></div>
+<div id="bar"><button onclick="craft()">🔨 Craft</button><button onclick="base()">🏰 Base</button><button onclick="cam()">📷 AR</button><button onclick="simt()">🎮 Sim</button></div>
+<script>
+const $=s=>document.querySelector(s),cv=$('#c'),cx=cv.getContext('2d'),P={x:0,y:0},C=20,Z=2.5;
+const RN=['wood','stone','iron','gold','crystal'],EM={wood:'🪵',stone:'🪨',iron:'⛏️',gold:'🪙',crystal:'🔮'};
+const T={wall:['🧱',{stone:3},2],floor:['🟫',{wood:2},0],roof:['🔺',{wood:3,stone:1},1],window:['🪟',{wood:2,iron:1},1],gate:['⛩️',{iron:4,wood:2},4],door:['🚪',{wood:4},3],sign:['🪧',{wood:1},0],bed:['🛏️',{wood:4},0],table:['🪑',{wood:3},0],chest:['🧰',{wood:5,iron:1},0],vault:['🏦',{iron:10,stone:10,gold:3},3],turret:['🗼',{iron:5,wood:3},10],trap:['🪤',{iron:2,wood:1},5]};
+const W={'Wood Sword':[{wood:3,stone:1},3],'Iron Sword':[{iron:4,wood:2},8],'Crossbow':[{wood:6,iron:5},14],'Mystic Blade':[{iron:5,crystal:3,gold:2},25]};
+const K={s:['stash',['wood','stone','iron']],v:['vault',['gold','crystal']]};
+let S;try{S=JSON.parse(localStorage.fort)}catch(e){}
+S=S||{inv:{wood:5,stone:2,iron:0,gold:0,crystal:0},stash:{wood:0,stone:0,iron:0},vault:{gold:0,crystal:0},grid:Array(64).fill(null),w:[],hp:100,xp:0,o:null,done:{}};
+let sel='wall',sim=false,ar=false,vis=[];
+const save=()=>{try{localStorage.fort=JSON.stringify(S)}catch(e){}},lv=()=>1+(S.xp/50|0),home=()=>Math.hypot(P.x,P.y)<40;
+const cs=c=>Object.entries(c).map(([k,v])=>v+EM[k]).join(' '),can=c=>Object.entries(c).every(([k,v])=>S.inv[k]>=v),pay=c=>Object.entries(c).forEach(([k,v])=>S.inv[k]-=v);
+const def=()=>S.grid.reduce((a,t)=>a+(t?T[t][2]:0),0),atk=()=>Math.max(2,...S.w.map(n=>W[n][1])),wn=()=>S.w.find(n=>W[n][1]==atk())||'fists';
+function h(a,b,s){let x=Math.imul(a,374761393)^Math.imul(b,668265263)^Math.imul(s,2147483647);x=Math.imul(x^x>>>13,1274126177);return((x^x>>>16)>>>0)/4294967296}
+function toast(m){const d=document.createElement('div');d.className='t';d.textContent=m;document.body.appendChild(d);setTimeout(()=>d.remove(),2600)}
+function fix(lat,lon){if(!S.o||S.o.sim){S.o={lat,lon};P.x=P.y=0}P.x=(lon-S.o.lon)*111320*Math.cos(S.o.lat*Math.PI/180);P.y=(lat-S.o.lat)*110540}
+if(navigator.geolocation)navigator.geolocation.watchPosition(p=>{if(!sim)fix(p.coords.latitude,p.coords.longitude)},e=>toast('GPS: '+e.message+' (try 🎮 Sim)'),{enableHighAccuracy:true,maximumAge:2000});
+function simt(){sim=!sim;if(sim&&!S.o)S.o={lat:0,lon:0,sim:1};$('#dp').style.display=sim?'grid':'none';toast(sim?'Sim mode: use the arrows to walk':'Real GPS')}
+function mvp(dx,dy){P.x+=dx;P.y+=dy}
+async function cam(){const v=$('#v');if(ar){v.srcObject.getTracks().forEach(t=>t.stop());v.style.display='none';ar=false;return}try{v.srcObject=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});v.style.display='block';ar=true}catch(e){toast('Camera unavailable')}}
+function ents(){const e=Math.floor(Date.now()/6e5),a=[],ci=Math.floor(P.x/C),cj=Math.floor(P.y/C);
+for(let i=ci-7;i<=ci+7;i++)for(let j=cj-7;j<=cj+7;j++){const k=i+','+j+','+e;if(S.done[k]||h(i,j,e)>.25)continue;const x=(i+h(i,j,1))*C,y=(j+h(i,j,2))*C,d=Math.hypot(x,y),q=h(i,j,3);if(d<25)continue;
+a.push({k,x,y,d,t:d>150&&q<.12?'cave':q<.1?'foe':q<.45?'tree':q<.72?'rock':q<.9?'ore':'gold'})}
+for(const k in S.done)if(k.split(',')[2]!=e)delete S.done[k];return a}
+const IC={tree:'🌲',rock:'🪨',ore:'⛏️',gold:'🟡',cave:'🕳️',foe:'👹'};
+function loot(n){const r=Math.random,t=n.t;let g={};
+if(t=='tree')g={wood:2+r()*3|0};else if(t=='rock')g={stone:2+r()*3|0};else if(t=='ore')g={iron:1+r()*2|0,stone:1};else if(t=='gold')g={gold:1+r()*2|0};
+else{const cave=t=='cave',eh=(cave?30:10)+Math.min(n.d/100,3)*10,dmg=Math.round(Math.ceil(eh/atk())*(2+r()*3)*(cave?1.5:1));S.hp-=dmg;S.done[n.k]=1;
+if(S.hp<=0){S.hp=100;for(const k of RN)S.inv[k]=S.inv[k]*.7|0;return toast('💀 You fell! Lost 30% of carried loot')}
+g={gold:1+r()*3|0,wood:r()*3|0,iron:r()*2|0};if(cave||r()<.15)g.crystal=1+r()*2|0;toast(`⚔️ Won with ${wn()} (-${dmg} HP)`)}
+for(const k in g)S.inv[k]+=g[k];S.done[n.k]=1;S.xp+=t=='cave'?20:t=='foe'?10:3;if(!/⚔/.test(document.querySelector('.t')?.textContent||''))toast('+ '+cs(g));save()}
+function hit(n){const d=Math.hypot(n.x-P.x,n.y-P.y);d>30?toast(`Walk closer (${d|0}m away, need 30m)`):loot(n)}
+cv.onclick=e=>{let b=null,bd=34;for(const n of vis){const d=Math.hypot(n.sx-e.clientX,n.sy-e.clientY);if(d<bd){bd=d;b=n}}if(b)hit(b)};
+function draw(){const w=cv.width,hh=cv.height,X=x=>w/2+(x-P.x)*Z,Y=y=>hh/2-(y-P.y)*Z;cx.clearRect(0,0,w,hh);if(!ar){cx.fillStyle='#1d3a1a';cx.fillRect(0,0,w,hh)}
+cx.strokeStyle='#ffffff18';for(let i=Math.floor((P.x-w/2/Z)/C);i<=(P.x+w/2/Z)/C;i++){cx.beginPath();cx.moveTo(X(i*C),0);cx.lineTo(X(i*C),hh);cx.stroke()}
+for(let j=Math.floor((P.y-hh/2/Z)/C);j<=(P.y+hh/2/Z)/C;j++){cx.beginPath();cx.moveTo(0,Y(j*C));cx.lineTo(w,Y(j*C));cx.stroke()}
+cx.textAlign='center';cx.textBaseline='middle';cx.font='34px serif';cx.fillText('🏰',X(0),Y(0));cx.strokeStyle='#ffd54f';cx.beginPath();cx.arc(X(0),Y(0),40*Z,0,7);cx.stroke();
+vis=ents();cx.font='28px serif';for(const n of vis){n.sx=X(n.x);n.sy=Y(n.y);cx.fillText(IC[n.t],n.sx,n.sy);if(Math.hypot(n.x-P.x,n.y-P.y)<=30){cx.strokeStyle='#ffee58';cx.beginPath();cx.arc(n.sx,n.sy,20,0,7);cx.stroke()}}
+cx.fillStyle='#29b6f6';cx.strokeStyle='#fff';cx.beginPath();cx.arc(w/2,hh/2,9,0,7);cx.fill();cx.stroke();cx.strokeStyle='#29b6f655';cx.beginPath();cx.arc(w/2,hh/2,30*Z,0,7);cx.stroke();
+$('#hud').innerHTML=`❤️${S.hp|0} ⭐Lv${lv()} 🛡️${def()} ⚔️${wn()}<br>`+RN.map(k=>EM[k]+S.inv[k]).join(' ')}
+function pn(x){const p=$('#p');if(!x){p.style.display='none';return}p.innerHTML='<button onclick="pn()" style="float:right">✖</button>'+x;p.style.display='block'}
+function craft(){if(!home())return toast('Return to your base 🏰 to use the crafting station');pn('<h3>🔨 Crafting Station</h3>'+Object.entries(W).map(([n,[c,a]])=>`<p>⚔️ <b>${n}</b> (atk ${a}) ${cs(c)} ${S.w.includes(n)?'✅':`<button onclick="mk('${n}')">Craft</button>`}</p>`).join('')+'<p>🔮 Crystals drop from caves 🕳️ (150m+ from home).</p>')}
+function mk(n){const c=W[n][0];if(!can(c))return toast('Not enough resources');pay(c);S.w.push(n);save();craft()}
+function base(){if(!home())return toast('Return to your base 🏰 to build');const cap=50*S.grid.filter(x=>x=='chest').length,s=S.stash,v=S.vault;
+pn(`<h3>🏰 Base — 🛡️ Defense ${def()}</h3>`+Object.entries(T).map(([k,[e,c]])=>`<button onclick="sel='${k}';base()" ${sel==k?'style="background:#f9a825"':''}>${e} ${cs(c)}</button>`).join('')+`<button onclick="sel='';base()" ${sel?'':'style="background:#f9a825"'}>🧹 Remove</button><div id="g">${S.grid.map((t,i)=>`<div onclick="B(${i})">${t?T[t][0]:''}</div>`).join('')}</div>`+
+`<p>🧰 Chests (${cap} cap): 🪵${s.wood} 🪨${s.stone} ⛏️${s.iron} <button onclick="mv('s',0)">In</button><button onclick="mv('s',1)">Out</button></p><p>🏦 Vault: 🪙${v.gold} 🔮${v.crystal} <button onclick="mv('v',0)">In</button><button onclick="mv('v',1)">Out</button></p><p>Turrets 🗼 and traps 🪤 add the most defense. Raiders attack every ~90s.</p>`)}
+function B(i){const t=S.grid[i];if(!sel){if(t){S.grid[i]=null;for(const[k,v]of Object.entries(T[t][1]))S.inv[k]+=v>>1}}else if(t)toast('Occupied: use 🧹 first');else if(sel=='vault'&&S.grid.includes('vault'))toast('Only one vault');else if(!can(T[sel][1]))toast('Not enough resources');else{pay(T[sel][1]);S.grid[i]=sel}save();base()}
+function mv(a,out){const[n,ks]=K[a],cap=50*S.grid.filter(x=>x=='chest').length;if(a=='v'&&!out&&!S.grid.includes('vault'))return toast('Build a vault 🏦 first');
+for(const k of ks){let m=out?S[n][k]:S.inv[k];if(!out&&a=='s')m=Math.min(m,cap-ks.reduce((q,x)=>q+S[n][x],0));if(m>0){S[n][k]+=out?-m:m;S.inv[k]+=out?m:-m}}save();base()}
+function raid(){if(!S.grid.some(Boolean))return;const pw=8+lv()*6+Math.random()*10,d=def();
+if(d>=pw){S.xp+=15;toast(`🛡️ Raid repelled! Defense ${d} vs ${pw|0}`)}else{let n=0;for(const k of K.s[1]){const l=S.stash[k]*.4|0;S.stash[k]-=l;n+=l}for(const k of K.v[1]){const l=S.vault[k]*.1|0;S.vault[k]-=l;n+=l}toast(`🏴‍☠️ Raiders broke in and stole ${n} items! Build more defense`)}save()}
+function rs(){cv.width=innerWidth;cv.height=innerHeight}addEventListener('resize',rs);rs();
+setInterval(draw,250);setInterval(raid,90000);setInterval(()=>{S.hp=Math.min(100,S.hp+1)},8000);
+if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script></body></html>
